@@ -1,0 +1,111 @@
+{
+  "name": "Festival Intelligence Weekly",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {"interval": [{"field": "cronExpression", "expression": "0 9 * * 3"}]}
+      },
+      "id": "1d10062e-e47e-4e80-8da5-b900103b90d7",
+      "name": "Weekly Wednesday 9am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [-224, 112]
+    },
+    {
+      "parameters": {"path": "festival-intel", "options": {}},
+      "id": "webhook-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-224, 12],
+      "webhookId": "festival-intel"
+    },
+    {
+      "parameters": {"url": "https://www.reddit.com/r/aivideo/top.json?t=week&limit=50", "options": {}},
+      "id": "018c3cef-c573-45d1-9d48-db00cf537bf8",
+      "name": "Reddit AIVideo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {"url": "https://www.reddit.com/r/runwayml/top.json?t=week&limit=30", "options": {}},
+      "id": "fb32f365-db59-4f14-9c32-60cadc71a07f",
+      "name": "Reddit Runway",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [0, 112]
+    },
+    {
+      "parameters": {"url": "https://www.reddit.com/r/SoraAI/top.json?t=week&limit=30", "options": {}},
+      "id": "c7e75875-8e33-42fd-9ce2-f67492895b61",
+      "name": "Reddit Sora",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [0, 208]
+    },
+    {
+      "parameters": {"url": "https://hn.algolia.com/api/v1/search?query=ai%20film%20OR%20ai%20video%20OR%20generative%20video&tags=story&hitsPerPage=30", "options": {}},
+      "id": "f6f4bd94-5e64-4d78-b73c-1dd283d14008",
+      "name": "HN AI Film",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [0, 304]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Consolidate AI filmmaking content\nconst items = [];\n\nfor (const input of $input.all()) {\n  const data = input.json;\n  \n  // Reddit format\n  if (data.data && data.data.children) {\n    for (const child of data.data.children) {\n      const post = child.data;\n      items.push({\n        source: `r/${post.subreddit}`,\n        title: post.title,\n        url: post.url || `https://reddit.com${post.permalink}`,\n        permalink: `https://reddit.com${post.permalink}`,\n        score: post.score,\n        comments: post.num_comments,\n        created: new Date(post.created_utc * 1000).toISOString(),\n        selftext: post.selftext || '',\n        flair: post.link_flair_text || '',\n        is_video: post.is_video || (post.url && (post.url.includes('v.redd.it') || post.url.includes('youtube') || post.url.includes('vimeo')))\n      });\n    }\n  }\n  \n  // HN format\n  if (data.hits) {\n    for (const hit of data.hits) {\n      items.push({\n        source: 'HackerNews',\n        title: hit.title,\n        url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,\n        permalink: `https://news.ycombinator.com/item?id=${hit.objectID}`,\n        score: hit.points,\n        comments: hit.num_comments,\n        created: hit.created_at,\n        selftext: '',\n        flair: '',\n        is_video: false\n      });\n    }\n  }\n}\n\n// Categorize by type\nconst filmKeywords = ['film', 'movie', 'short', 'cinema', 'narrative', 'story', 'director', 'shot', 'scene'];\nconst toolKeywords = ['runway', 'sora', 'kling', 'pika', 'minimax', 'hailuo', 'luma', 'stable video', 'gen-3', 'gen3'];\nconst techniqueKeywords = ['workflow', 'tutorial', 'how to', 'prompt', 'technique', 'tips', 'guide'];\n\nconst categorized = items.map(item => {\n  const text = (item.title + ' ' + item.selftext + ' ' + item.flair).toLowerCase();\n  let category = 'general';\n  \n  if (filmKeywords.some(kw => text.includes(kw))) category = 'films_projects';\n  else if (toolKeywords.some(kw => text.includes(kw))) category = 'tools_platforms';\n  else if (techniqueKeywords.some(kw => text.includes(kw))) category = 'techniques';\n  \n  return { ...item, category };\n});\n\n// Sort by score\ncategorized.sort((a, b) => b.score - a.score);\n\nreturn categorized.map(item => ({ json: item }));"
+      },
+      "id": "ef2f6cfa-8004-41c8-800d-13a9022ad4f6",
+      "name": "Categorize Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [288, 160]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(i => i.json);\nconst today = new Date().toISOString().split('T')[0];\n\n// Group by category\nconst byCategory = {\n  films_projects: items.filter(i => i.category === 'films_projects').slice(0, 10),\n  tools_platforms: items.filter(i => i.category === 'tools_platforms').slice(0, 10),\n  techniques: items.filter(i => i.category === 'techniques').slice(0, 10),\n  general: items.filter(i => i.category === 'general').slice(0, 5)\n};\n\nlet md = `# Festival Intelligence Report - Week of ${today}\\n\\n`;\nmd += `*Curated for The Innovators Film Festival*\\n\\n`;\nmd += `**Total items scanned:** ${items.length}\\n\\n`;\nmd += `---\\n\\n`;\n\n// Films & Projects section\nmd += `## AI Films & Projects\\n\\n`;\nmd += `*Potential submissions, notable creators, emerging voices*\\n\\n`;\nfor (const item of byCategory.films_projects) {\n  md += `### ${item.title}\\n`;\n  md += `**Source:** ${item.source} | **Score:** ${item.score} | **Comments:** ${item.comments}\\n`;\n  md += `**Link:** ${item.url}\\n`;\n  if (item.is_video) md += `*Contains video*\\n`;\n  md += `\\n`;\n}\nmd += `---\\n\\n`;\n\n// Tools section\nmd += `## Tools & Platforms\\n\\n`;\nmd += `*New releases, updates, comparisons*\\n\\n`;\nfor (const item of byCategory.tools_platforms) {\n  md += `### ${item.title}\\n`;\n  md += `**Source:** ${item.source} | **Score:** ${item.score}\\n`;\n  md += `**Link:** ${item.url}\\n\\n`;\n}\nmd += `---\\n\\n`;\n\n// Techniques section\nmd += `## Techniques & Workflows\\n\\n`;\nmd += `*Educational content, community discoveries*\\n\\n`;\nfor (const item of byCategory.techniques) {\n  md += `- [${item.title}](${item.url}) (${item.source}, ${item.score} pts)\\n`;\n}\nmd += `\\n---\\n\\n`;\n\n// Trends summary\nconst toolMentions = {};\nconst tools = ['runway', 'sora', 'kling', 'pika', 'minimax', 'hailuo', 'luma'];\nfor (const item of items) {\n  const text = (item.title + ' ' + item.selftext).toLowerCase();\n  for (const tool of tools) {\n    if (text.includes(tool)) {\n      toolMentions[tool] = (toolMentions[tool] || 0) + 1;\n    }\n  }\n}\n\nmd += `## Tool Mentions This Week\\n\\n`;\nfor (const [tool, count] of Object.entries(toolMentions).sort((a, b) => b[1] - a[1])) {\n  md += `- **${tool}:** ${count} mentions\\n`;\n}\n\nmd += `\\n\\n*Generated: ${new Date().toISOString()}*\\n`;\n\nconst filename = `${today}_festival_intel.md`;\nconst filepath = `/home/node/output/festival_intelligence/${filename}`;\n\n// Escape single quotes for shell\nconst escapedMd = md.replace(/'/g, \"'\\\"'\\\"'\");\n\nreturn [{ json: { markdown: escapedMd, filename, filepath } }];"
+      },
+      "id": "defc481e-a3ce-407e-94dc-166e3ec67cb9",
+      "name": "Format Festival Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [512, 160]
+    },
+    {
+      "parameters": {
+        "command": "=echo '{{ $json.markdown }}' > {{ $json.filepath }}"
+      },
+      "id": "save-to-file",
+      "name": "Save to File",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [732, 160]
+    }
+  ],
+  "connections": {
+    "Weekly Wednesday 9am": {
+      "main": [[
+        {"node": "Reddit AIVideo", "type": "main", "index": 0},
+        {"node": "Reddit Runway", "type": "main", "index": 0},
+        {"node": "Reddit Sora", "type": "main", "index": 0},
+        {"node": "HN AI Film", "type": "main", "index": 0}
+      ]]
+    },
+    "Manual Trigger": {
+      "main": [[
+        {"node": "Reddit AIVideo", "type": "main", "index": 0},
+        {"node": "Reddit Runway", "type": "main", "index": 0},
+        {"node": "Reddit Sora", "type": "main", "index": 0},
+        {"node": "HN AI Film", "type": "main", "index": 0}
+      ]]
+    },
+    "Reddit AIVideo": {"main": [[{"node": "Categorize Content", "type": "main", "index": 0}]]},
+    "Reddit Runway": {"main": [[{"node": "Categorize Content", "type": "main", "index": 0}]]},
+    "Reddit Sora": {"main": [[{"node": "Categorize Content", "type": "main", "index": 0}]]},
+    "HN AI Film": {"main": [[{"node": "Categorize Content", "type": "main", "index": 0}]]},
+    "Categorize Content": {"main": [[{"node": "Format Festival Report", "type": "main", "index": 0}]]},
+    "Format Festival Report": {"main": [[{"node": "Save to File", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1", "availableInMCP": false}
+}

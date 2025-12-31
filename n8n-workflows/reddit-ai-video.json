@@ -1,0 +1,151 @@
+{
+  "name": "Reddit AI Video Daily Digest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * *"
+            }
+          ]
+        }
+      },
+      "id": "2ffe2b4c-a7ad-4ae5-b01a-ac1509e7bfbd",
+      "name": "Daily 7am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [-176, -16]
+    },
+    {
+      "parameters": {
+        "path": "reddit-digest",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-176, -116],
+      "webhookId": "reddit-digest"
+    },
+    {
+      "parameters": {
+        "url": "https://www.reddit.com/r/StableDiffusion/top.json?t=day&limit=25",
+        "options": {}
+      },
+      "id": "27d17d33-1e2d-4acc-8906-38d0efecd85e",
+      "name": "Reddit StableDiffusion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [48, -112]
+    },
+    {
+      "parameters": {
+        "url": "https://www.reddit.com/r/aivideo/top.json?t=day&limit=25",
+        "options": {}
+      },
+      "id": "40ea412d-b4cb-46e1-a42e-16c1c862998d",
+      "name": "Reddit AIVideo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [48, -16]
+    },
+    {
+      "parameters": {
+        "url": "https://www.reddit.com/r/midjourney/top.json?t=day&limit=25",
+        "options": {}
+      },
+      "id": "e014736c-c2f0-4ad6-8d74-17ae8b58c290",
+      "name": "Reddit Midjourney",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [48, 96]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "id": "6dc0bdb4-f3ef-4f88-be5f-3b9e47ce3ef7",
+      "name": "Merge All",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [272, -16]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and flatten posts from all subreddits\nconst allPosts = [];\n\nfor (const item of $input.all()) {\n  const data = item.json.data;\n  if (data && data.children) {\n    for (const child of data.children) {\n      const post = child.data;\n      allPosts.push({\n        subreddit: post.subreddit,\n        title: post.title,\n        url: `https://reddit.com${post.permalink}`,\n        score: post.score,\n        author: post.author,\n        selftext: post.selftext || '',\n        created: new Date(post.created_utc * 1000).toISOString(),\n        num_comments: post.num_comments,\n        flair: post.link_flair_text || ''\n      });\n    }\n  }\n}\n\n// Filter: score > 30 and contains technique-related keywords\nconst keywords = ['prompt', 'workflow', 'how', 'tutorial', 'guide', 'tip', 'technique', 'settings', 'parameters', 'lora', 'controlnet', 'comfyui', 'automatic1111', 'kling', 'runway', 'pika', 'sora', 'hailuo', 'minimax'];\n\nconst filtered = allPosts.filter(post => {\n  const text = (post.title + ' ' + post.selftext + ' ' + post.flair).toLowerCase();\n  const hasKeyword = keywords.some(kw => text.includes(kw));\n  return post.score >= 30 && hasKeyword;\n});\n\n// Sort by score descending\nfiltered.sort((a, b) => b.score - a.score);\n\n// Return top 20\nreturn filtered.slice(0, 20).map(post => ({ json: post }));"
+      },
+      "id": "e4adeab6-58d0-462c-baf0-f2219fdba873",
+      "name": "Filter & Sort",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [496, -16]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate markdown digest\nconst posts = $input.all().map(i => i.json);\nconst today = new Date().toISOString().split('T')[0];\n\nlet markdown = `# Reddit AI Video Digest - ${today}\\n\\n`;\nmarkdown += `**Posts scanned:** Multiple subreddits (StableDiffusion, aivideo, midjourney)\\n`;\nmarkdown += `**Filter:** Score 30+, technique-related keywords\\n`;\nmarkdown += `**Posts matched:** ${posts.length}\\n\\n`;\nmarkdown += `---\\n\\n`;\n\nfor (const post of posts) {\n  markdown += `## ${post.title}\\n\\n`;\n  markdown += `**Subreddit:** r/${post.subreddit} | **Score:** ${post.score} | **Comments:** ${post.num_comments}\\n\\n`;\n  markdown += `**Link:** ${post.url}\\n\\n`;\n  \n  if (post.selftext && post.selftext.length > 0) {\n    const preview = post.selftext.substring(0, 500);\n    markdown += `**Preview:**\\n${preview}${post.selftext.length > 500 ? '...' : ''}\\n\\n`;\n  }\n  \n  markdown += `---\\n\\n`;\n}\n\nmarkdown += `\\n*Generated: ${new Date().toISOString()}*\\n`;\n\nconst filename = `${today}_reddit.md`;\nconst filepath = `/home/node/output/reddit_ai_video/${filename}`;\n\n// Escape single quotes in markdown for shell command\nconst escapedMarkdown = markdown.replace(/'/g, \"'\\\"'\\\"'\");\n\nreturn [{ json: { markdown: escapedMarkdown, filename, filepath } }];"
+      },
+      "id": "4e7de442-d1bb-4882-aab8-f04dab30fd68",
+      "name": "Format Markdown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, -16]
+    },
+    {
+      "parameters": {
+        "command": "=echo '{{ $json.markdown }}' > {{ $json.filepath }}"
+      },
+      "id": "47ce43f9-e135-4dcf-bc53-344e86f3cc51",
+      "name": "Save to File",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [920, -16]
+    }
+  ],
+  "connections": {
+    "Daily 7am": {
+      "main": [
+        [
+          {"node": "Reddit StableDiffusion", "type": "main", "index": 0},
+          {"node": "Reddit AIVideo", "type": "main", "index": 0},
+          {"node": "Reddit Midjourney", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {"node": "Reddit StableDiffusion", "type": "main", "index": 0},
+          {"node": "Reddit AIVideo", "type": "main", "index": 0},
+          {"node": "Reddit Midjourney", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Reddit StableDiffusion": {
+      "main": [[{"node": "Merge All", "type": "main", "index": 0}]]
+    },
+    "Reddit AIVideo": {
+      "main": [[{"node": "Merge All", "type": "main", "index": 1}]]
+    },
+    "Reddit Midjourney": {
+      "main": [[{"node": "Merge All", "type": "main", "index": 1}]]
+    },
+    "Merge All": {
+      "main": [[{"node": "Filter & Sort", "type": "main", "index": 0}]]
+    },
+    "Filter & Sort": {
+      "main": [[{"node": "Format Markdown", "type": "main", "index": 0}]]
+    },
+    "Format Markdown": {
+      "main": [[{"node": "Save to File", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  }
+}

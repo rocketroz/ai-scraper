@@ -1,0 +1,125 @@
+{
+  "name": "Opportunity Radar Weekly",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "cronExpression", "expression": "0 8 * * 1"}]
+        }
+      },
+      "id": "bbc532fe-3787-47aa-ae16-609b8db51f2a",
+      "name": "Weekly Monday 8am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [-224, 160]
+    },
+    {
+      "parameters": {"path": "opportunity-radar", "options": {}},
+      "id": "webhook-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-224, 60],
+      "webhookId": "opportunity-radar"
+    },
+    {
+      "parameters": {
+        "url": "https://hn.algolia.com/api/v1/search_by_date?tags=show_hn&hitsPerPage=30",
+        "options": {}
+      },
+      "id": "3c4115b8-fa3b-4594-b52c-399b4f95158f",
+      "name": "HackerNews Startups",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [0, 112]
+    },
+    {
+      "parameters": {
+        "url": "https://hn.algolia.com/api/v1/search?query=side%20project&tags=show_hn&hitsPerPage=25",
+        "options": {}
+      },
+      "id": "2508d151-f648-4cec-9dba-478cfba916a7",
+      "name": "HackerNews Show HN",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [0, 208]
+    },
+    {
+      "parameters": {
+        "url": "https://www.reddit.com/r/SideProject/top.json?t=week&limit=25",
+        "options": {}
+      },
+      "id": "eff93fce-c57a-444f-8284-ef93c1e90699",
+      "name": "Reddit SideProject",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [0, 304]
+    },
+    {
+      "parameters": {
+        "url": "https://www.reddit.com/r/EntrepreneurRideAlong/top.json?t=week&limit=25",
+        "options": {}
+      },
+      "id": "9b3585c2-a0be-4adf-86cf-c3851ca5eddd",
+      "name": "Reddit Entrepreneur",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [0, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Consolidate all sources into opportunity candidates\nconst opportunities = [];\n\nfor (const item of $input.all()) {\n  const data = item.json;\n  \n  // Handle HackerNews format\n  if (data.hits) {\n    for (const hit of data.hits) {\n      opportunities.push({\n        source: 'HackerNews',\n        title: hit.title,\n        url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,\n        score: hit.points,\n        comments: hit.num_comments,\n        created: hit.created_at,\n        description: hit.story_text || ''\n      });\n    }\n  }\n  \n  // Handle Reddit format\n  if (data.data && data.data.children) {\n    for (const child of data.data.children) {\n      const post = child.data;\n      opportunities.push({\n        source: `Reddit r/${post.subreddit}`,\n        title: post.title,\n        url: `https://reddit.com${post.permalink}`,\n        score: post.score,\n        comments: post.num_comments,\n        created: new Date(post.created_utc * 1000).toISOString(),\n        description: post.selftext || ''\n      });\n    }\n  }\n}\n\n// Filter for entertainment, video, productivity, ADHD, parenting keywords\nconst domainKeywords = ['video', 'creator', 'content', 'film', 'movie', 'entertainment', 'streaming', 'productivity', 'adhd', 'parent', 'mom', 'dad', 'automat', 'ai', 'tool', 'saas', 'app'];\n\nconst filtered = opportunities.filter(opp => {\n  const text = (opp.title + ' ' + opp.description).toLowerCase();\n  return domainKeywords.some(kw => text.includes(kw)) && opp.score >= 20;\n});\n\nfiltered.sort((a, b) => b.score - a.score);\n\nreturn filtered.slice(0, 25).map(opp => ({ json: opp }));"
+      },
+      "id": "d296b34d-0690-4b97-a551-2129232916c0",
+      "name": "Consolidate & Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [288, 208]
+    },
+    {
+      "parameters": {
+        "jsCode": "const opportunities = $input.all().map(i => i.json);\nconst today = new Date().toISOString().split('T')[0];\n\nlet md = `# Opportunity Radar - Week of ${today}\\n\\n`;\nmd += `**Total opportunities found:** ${opportunities.length}\\n\\n`;\nmd += `---\\n\\n`;\n\nfor (const opp of opportunities) {\n  md += `## ${opp.title}\\n\\n`;\n  md += `**Source:** ${opp.source} | **Score:** ${opp.score} | **Comments:** ${opp.comments || 'N/A'}\\n\\n`;\n  md += `**Link:** ${opp.url}\\n\\n`;\n  if (opp.description && opp.description.length > 0) {\n    const preview = opp.description.substring(0, 300);\n    md += `${preview}${opp.description.length > 300 ? '...' : ''}\\n\\n`;\n  }\n  md += `---\\n\\n`;\n}\n\nmd += `\\n*Generated: ${new Date().toISOString()}*\\n`;\n\nconst filename = `${today}_opportunities.md`;\nconst filepath = `/home/node/output/opportunity_radar/${filename}`;\n\n// Escape single quotes for shell\nconst escapedMd = md.replace(/'/g, \"'\\\"'\\\"'\");\n\nreturn [{ json: { markdown: escapedMd, filename, filepath } }];"
+      },
+      "id": "a5669f67-eb2d-457a-9b5b-a71767640106",
+      "name": "Format Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 208]
+    },
+    {
+      "parameters": {
+        "command": "=echo '{{ $json.markdown }}' > {{ $json.filepath }}"
+      },
+      "id": "save-to-file",
+      "name": "Save to File",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [740, 208]
+    }
+  ],
+  "connections": {
+    "Weekly Monday 8am": {
+      "main": [[
+        {"node": "HackerNews Startups", "type": "main", "index": 0},
+        {"node": "HackerNews Show HN", "type": "main", "index": 0},
+        {"node": "Reddit SideProject", "type": "main", "index": 0},
+        {"node": "Reddit Entrepreneur", "type": "main", "index": 0}
+      ]]
+    },
+    "Manual Trigger": {
+      "main": [[
+        {"node": "HackerNews Startups", "type": "main", "index": 0},
+        {"node": "HackerNews Show HN", "type": "main", "index": 0},
+        {"node": "Reddit SideProject", "type": "main", "index": 0},
+        {"node": "Reddit Entrepreneur", "type": "main", "index": 0}
+      ]]
+    },
+    "HackerNews Startups": {"main": [[{"node": "Consolidate & Filter", "type": "main", "index": 0}]]},
+    "HackerNews Show HN": {"main": [[{"node": "Consolidate & Filter", "type": "main", "index": 0}]]},
+    "Reddit SideProject": {"main": [[{"node": "Consolidate & Filter", "type": "main", "index": 0}]]},
+    "Reddit Entrepreneur": {"main": [[{"node": "Consolidate & Filter", "type": "main", "index": 0}]]},
+    "Consolidate & Filter": {"main": [[{"node": "Format Report", "type": "main", "index": 0}]]},
+    "Format Report": {"main": [[{"node": "Save to File", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1", "availableInMCP": false}
+}
