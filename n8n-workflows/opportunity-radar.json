@@ -68,7 +68,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Consolidate all sources into opportunity candidates\nconst opportunities = [];\n\nfor (const item of $input.all()) {\n  const data = item.json;\n  \n  // Handle HackerNews format\n  if (data.hits) {\n    for (const hit of data.hits) {\n      opportunities.push({\n        source: 'HackerNews',\n        title: hit.title,\n        url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,\n        score: hit.points,\n        comments: hit.num_comments,\n        created: hit.created_at,\n        description: hit.story_text || ''\n      });\n    }\n  }\n  \n  // Handle Reddit format\n  if (data.data && data.data.children) {\n    for (const child of data.data.children) {\n      const post = child.data;\n      opportunities.push({\n        source: `Reddit r/${post.subreddit}`,\n        title: post.title,\n        url: `https://reddit.com${post.permalink}`,\n        score: post.score,\n        comments: post.num_comments,\n        created: new Date(post.created_utc * 1000).toISOString(),\n        description: post.selftext || ''\n      });\n    }\n  }\n}\n\n// Filter for entertainment, video, productivity, ADHD, parenting keywords\nconst domainKeywords = ['video', 'creator', 'content', 'film', 'movie', 'entertainment', 'streaming', 'productivity', 'adhd', 'parent', 'mom', 'dad', 'automat', 'ai', 'tool', 'saas', 'app'];\n\nconst filtered = opportunities.filter(opp => {\n  const text = (opp.title + ' ' + opp.description).toLowerCase();\n  return domainKeywords.some(kw => text.includes(kw)) && opp.score >= 20;\n});\n\nfiltered.sort((a, b) => b.score - a.score);\n\nreturn filtered.slice(0, 25).map(opp => ({ json: opp }));"
+        "jsCode": "// Consolidate all sources into opportunity candidates\nconst opportunities = [];\n\nfor (const item of $input.all()) {\n  const data = item.json;\n  \n  // Handle HackerNews format\n  if (data.hits) {\n    for (const hit of data.hits) {\n      opportunities.push({\n        source: 'HackerNews',\n        title: hit.title,\n        url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,\n        score: hit.points || 0,\n        comments: hit.num_comments || 0,\n        created: hit.created_at,\n        description: (hit.story_text || '').substring(0, 500).replace(/\"/g, '').replace(/\\n/g, ' ')\n      });\n    }\n  }\n  \n  // Handle Reddit format\n  if (data.data && data.data.children) {\n    for (const child of data.data.children) {\n      const post = child.data;\n      // Map subreddit to Notion select options\n      let source = 'HackerNews';\n      if (post.subreddit === 'SideProject') source = 'Reddit SideProject';\n      else if (post.subreddit === 'EntrepreneurRideAlong') source = 'Reddit Entrepreneur';\n      \n      opportunities.push({\n        source: source,\n        title: post.title,\n        url: `https://reddit.com${post.permalink}`,\n        score: post.score,\n        comments: post.num_comments,\n        created: new Date(post.created_utc * 1000).toISOString(),\n        description: (post.selftext || '').substring(0, 500).replace(/\"/g, '').replace(/\\n/g, ' ')\n      });\n    }\n  }\n}\n\n// Filter for entertainment, video, productivity, ADHD, parenting keywords\nconst domainKeywords = ['video', 'creator', 'content', 'film', 'movie', 'entertainment', 'streaming', 'productivity', 'adhd', 'parent', 'mom', 'dad', 'automat', 'ai', 'tool', 'saas', 'app'];\n\nconst filtered = opportunities.filter(opp => {\n  const text = (opp.title + ' ' + opp.description).toLowerCase();\n  return domainKeywords.some(kw => text.includes(kw)) && opp.score >= 5;\n});\n\nfiltered.sort((a, b) => b.score - a.score);\n\nreturn filtered.slice(0, 25).map(opp => ({ json: opp }));"
       },
       "id": "d296b34d-0690-4b97-a551-2129232916c0",
       "name": "Consolidate & Filter",
@@ -78,23 +78,33 @@
     },
     {
       "parameters": {
-        "jsCode": "const opportunities = $input.all().map(i => i.json);\nconst today = new Date().toISOString().split('T')[0];\n\nlet md = `# Opportunity Radar - Week of ${today}\\n\\n`;\nmd += `**Total opportunities found:** ${opportunities.length}\\n\\n`;\nmd += `---\\n\\n`;\n\nfor (const opp of opportunities) {\n  md += `## ${opp.title}\\n\\n`;\n  md += `**Source:** ${opp.source} | **Score:** ${opp.score} | **Comments:** ${opp.comments || 'N/A'}\\n\\n`;\n  md += `**Link:** ${opp.url}\\n\\n`;\n  if (opp.description && opp.description.length > 0) {\n    const preview = opp.description.substring(0, 300);\n    md += `${preview}${opp.description.length > 300 ? '...' : ''}\\n\\n`;\n  }\n  md += `---\\n\\n`;\n}\n\nmd += `\\n*Generated: ${new Date().toISOString()}*\\n`;\n\nconst filename = `${today}_opportunities.md`;\nconst filepath = `/home/node/output/opportunity_radar/${filename}`;\n\n// Escape single quotes for shell\nconst escapedMd = md.replace(/'/g, \"'\\\"'\\\"'\");\n\nreturn [{ json: { markdown: escapedMd, filename, filepath } }];"
+        "resource": "databasePage",
+        "databaseId": {"__rl": true, "mode": "id", "value": "bc3e684029ec4e5d99d41f2d4c52b07c"},
+        "title": "={{ $json.title.substring(0,100) }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {"key": "URL|url", "urlValue": "={{ $json.url }}"},
+            {"key": "Score|number", "numberValue": "={{ $json.score }}"},
+            {"key": "Comments|number", "numberValue": "={{ $json.comments }}"},
+            {"key": "Source|select", "selectValue": "={{ $json.source }}"},
+            {"key": "Description|rich_text", "textValue": "={{ $json.description }}"},
+            {"key": "Date|date", "includeTime": false, "date": "={{ $json.created.split('T')[0] }}"},
+            {"key": "Date Scraped|date", "includeTime": false, "date": "={{ $now.toISODate() }}"}
+          ]
+        },
+        "options": {}
       },
-      "id": "a5669f67-eb2d-457a-9b5b-a71767640106",
-      "name": "Format Report",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [520, 208]
-    },
-    {
-      "parameters": {
-        "command": "=echo '{{ $json.markdown }}' > {{ $json.filepath }}"
-      },
-      "id": "save-to-file",
-      "name": "Save to File",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
-      "position": [740, 208]
+      "id": "notion-create",
+      "name": "Add to Notion",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [520, 208],
+      "credentials": {
+        "notionApi": {
+          "id": "iPf6O1bq7aydtAuc",
+          "name": "Notion API"
+        }
+      }
     }
   ],
   "connections": {
@@ -118,8 +128,7 @@
     "HackerNews Show HN": {"main": [[{"node": "Consolidate & Filter", "type": "main", "index": 0}]]},
     "Reddit SideProject": {"main": [[{"node": "Consolidate & Filter", "type": "main", "index": 0}]]},
     "Reddit Entrepreneur": {"main": [[{"node": "Consolidate & Filter", "type": "main", "index": 0}]]},
-    "Consolidate & Filter": {"main": [[{"node": "Format Report", "type": "main", "index": 0}]]},
-    "Format Report": {"main": [[{"node": "Save to File", "type": "main", "index": 0}]]}
+    "Consolidate & Filter": {"main": [[{"node": "Add to Notion", "type": "main", "index": 0}]]}
   },
   "settings": {"executionOrder": "v1", "availableInMCP": false}
 }

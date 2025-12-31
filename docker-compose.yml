@@ -18,6 +18,8 @@ services:
       N8N_DEFAULT_BINARY_DATA_MODE: filesystem
       N8N_BINARY_DATA_STORAGE_PATH: /home/node/output
       NODES_EXCLUDE: "[]"
+      # Notion Integration
+      NOTION_API_KEY: ${NOTION_API_KEY}
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
       DB_POSTGRESDB_PORT: "5432"

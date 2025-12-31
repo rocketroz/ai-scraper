@@ -4,12 +4,7 @@
     {
       "parameters": {
         "rule": {
-          "interval": [
-            {
-              "field": "cronExpression",
-              "expression": "0 7 * * *"
-            }
-          ]
+          "interval": [{"field": "cronExpression", "expression": "0 7 * * *"}]
         }
       },
       "id": "2ffe2b4c-a7ad-4ae5-b01a-ac1509e7bfbd",
@@ -19,10 +14,7 @@
       "position": [-176, -16]
     },
     {
-      "parameters": {
-        "path": "reddit-digest",
-        "options": {}
-      },
+      "parameters": {"path": "reddit-digest", "options": {}},
       "id": "webhook-trigger",
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.webhook",
@@ -87,65 +79,55 @@
     },
     {
       "parameters": {
-        "jsCode": "// Generate markdown digest\nconst posts = $input.all().map(i => i.json);\nconst today = new Date().toISOString().split('T')[0];\n\nlet markdown = `# Reddit AI Video Digest - ${today}\\n\\n`;\nmarkdown += `**Posts scanned:** Multiple subreddits (StableDiffusion, aivideo, midjourney)\\n`;\nmarkdown += `**Filter:** Score 30+, technique-related keywords\\n`;\nmarkdown += `**Posts matched:** ${posts.length}\\n\\n`;\nmarkdown += `---\\n\\n`;\n\nfor (const post of posts) {\n  markdown += `## ${post.title}\\n\\n`;\n  markdown += `**Subreddit:** r/${post.subreddit} | **Score:** ${post.score} | **Comments:** ${post.num_comments}\\n\\n`;\n  markdown += `**Link:** ${post.url}\\n\\n`;\n  \n  if (post.selftext && post.selftext.length > 0) {\n    const preview = post.selftext.substring(0, 500);\n    markdown += `**Preview:**\\n${preview}${post.selftext.length > 500 ? '...' : ''}\\n\\n`;\n  }\n  \n  markdown += `---\\n\\n`;\n}\n\nmarkdown += `\\n*Generated: ${new Date().toISOString()}*\\n`;\n\nconst filename = `${today}_reddit.md`;\nconst filepath = `/home/node/output/reddit_ai_video/${filename}`;\n\n// Escape single quotes in markdown for shell command\nconst escapedMarkdown = markdown.replace(/'/g, \"'\\\"'\\\"'\");\n\nreturn [{ json: { markdown: escapedMarkdown, filename, filepath } }];"
+        "resource": "databasePage",
+        "databaseId": {"__rl": true, "mode": "id", "value": "41770775e00c4ccdbfb134d1d305e392"},
+        "title": "={{ $json.title.substring(0,100) }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {"key": "URL|url", "urlValue": "={{ $json.url }}"},
+            {"key": "Score|number", "numberValue": "={{ $json.score }}"},
+            {"key": "Comments|number", "numberValue": "={{ $json.num_comments }}"},
+            {"key": "Subreddit|select", "selectValue": "={{ $json.subreddit }}"},
+            {"key": "Flair|rich_text", "textValue": "={{ ($json.flair || '').substring(0,100) }}"},
+            {"key": "Date|date", "includeTime": false, "date": "={{ $json.created.split('T')[0] }}"},
+            {"key": "Date Scraped|date", "includeTime": false, "date": "={{ $now.toISODate() }}"}
+          ]
+        },
+        "options": {}
       },
-      "id": "4e7de442-d1bb-4882-aab8-f04dab30fd68",
-      "name": "Format Markdown",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [720, -16]
-    },
-    {
-      "parameters": {
-        "command": "=echo '{{ $json.markdown }}' > {{ $json.filepath }}"
-      },
-      "id": "47ce43f9-e135-4dcf-bc53-344e86f3cc51",
-      "name": "Save to File",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
-      "position": [920, -16]
+      "id": "notion-create",
+      "name": "Add to Notion",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [720, -16],
+      "credentials": {
+        "notionApi": {
+          "id": "iPf6O1bq7aydtAuc",
+          "name": "Notion API"
+        }
+      }
     }
   ],
   "connections": {
     "Daily 7am": {
-      "main": [
-        [
-          {"node": "Reddit StableDiffusion", "type": "main", "index": 0},
-          {"node": "Reddit AIVideo", "type": "main", "index": 0},
-          {"node": "Reddit Midjourney", "type": "main", "index": 0}
-        ]
-      ]
+      "main": [[
+        {"node": "Reddit StableDiffusion", "type": "main", "index": 0},
+        {"node": "Reddit AIVideo", "type": "main", "index": 0},
+        {"node": "Reddit Midjourney", "type": "main", "index": 0}
+      ]]
     },
     "Manual Trigger": {
-      "main": [
-        [
-          {"node": "Reddit StableDiffusion", "type": "main", "index": 0},
-          {"node": "Reddit AIVideo", "type": "main", "index": 0},
-          {"node": "Reddit Midjourney", "type": "main", "index": 0}
-        ]
-      ]
+      "main": [[
+        {"node": "Reddit StableDiffusion", "type": "main", "index": 0},
+        {"node": "Reddit AIVideo", "type": "main", "index": 0},
+        {"node": "Reddit Midjourney", "type": "main", "index": 0}
+      ]]
     },
-    "Reddit StableDiffusion": {
-      "main": [[{"node": "Merge All", "type": "main", "index": 0}]]
-    },
-    "Reddit AIVideo": {
-      "main": [[{"node": "Merge All", "type": "main", "index": 1}]]
-    },
-    "Reddit Midjourney": {
-      "main": [[{"node": "Merge All", "type": "main", "index": 1}]]
-    },
-    "Merge All": {
-      "main": [[{"node": "Filter & Sort", "type": "main", "index": 0}]]
-    },
-    "Filter & Sort": {
-      "main": [[{"node": "Format Markdown", "type": "main", "index": 0}]]
-    },
-    "Format Markdown": {
-      "main": [[{"node": "Save to File", "type": "main", "index": 0}]]
-    }
+    "Reddit StableDiffusion": {"main": [[{"node": "Merge All", "type": "main", "index": 0}]]},
+    "Reddit AIVideo": {"main": [[{"node": "Merge All", "type": "main", "index": 1}]]},
+    "Reddit Midjourney": {"main": [[{"node": "Merge All", "type": "main", "index": 1}]]},
+    "Merge All": {"main": [[{"node": "Filter & Sort", "type": "main", "index": 0}]]},
+    "Filter & Sort": {"main": [[{"node": "Add to Notion", "type": "main", "index": 0}]]}
   },
-  "settings": {
-    "executionOrder": "v1",
-    "availableInMCP": false
-  }
+  "settings": {"executionOrder": "v1", "availableInMCP": false}
 }
