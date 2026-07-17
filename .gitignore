@@ -32,3 +32,6 @@ venv/
 # Temp files
 *.tmp
 temp_*.json
+
+# Backups (n8n credentials export, Postgres dumps)
+backups/
